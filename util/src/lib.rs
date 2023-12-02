@@ -12,7 +12,6 @@ fn init_logger(level: LevelFilter) -> Result<()> {
     inner_init_logger(Some(level), false)
 }
 
-#[cfg(test)]
 pub fn init_test_logger() -> Result<()> {
     inner_init_logger(Some(LevelFilter::Trace), true)
 }
@@ -107,6 +106,32 @@ pub fn grid_neighbors<T>(
     }
 
     neighbors
+}
+
+#[derive(Debug)]
+pub struct MinMax {
+    pub min: Option<usize>,
+    pub max: Option<usize>,
+}
+
+impl FromIterator<usize> for MinMax {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        let mut min = None;
+        let mut max = None;
+
+        for i in iter {
+            min = match min {
+                None => Some(i),
+                Some(m) => Some(usize::min(m, i)),
+            };
+            max = match max {
+                None => Some(i),
+                Some(m) => Some(usize::max(m, i)),
+            };
+        }
+
+        MinMax { min, max }
+    }
 }
 
 #[cfg(test)]
