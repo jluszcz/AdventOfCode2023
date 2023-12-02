@@ -10,8 +10,8 @@ struct Reveal {
 }
 
 impl Reveal {
-    fn is_possible(&self, other: &Reveal) -> bool {
-        self.red <= other.red && self.green <= other.green && self.blue <= other.blue
+    fn power(&self) -> usize {
+        self.red * self.green * self.blue
     }
 }
 
@@ -51,8 +51,18 @@ struct Game {
 }
 
 impl Game {
-    fn is_possible(&self, reveal: &Reveal) -> bool {
-        self.reveals.iter().all(|r| r.is_possible(reveal))
+    fn min_set(&self) -> Reveal {
+        let mut red = 0;
+        let mut green = 0;
+        let mut blue = 0;
+
+        for reveal in self.reveals.iter() {
+            red = usize::max(red, reveal.red);
+            green = usize::max(green, reveal.green);
+            blue = usize::max(blue, reveal.blue);
+        }
+
+        Reveal { red, green, blue }
     }
 }
 
@@ -83,17 +93,11 @@ impl FromStr for Game {
 }
 
 fn main() -> Result<()> {
-    let contents = Reveal {
-        red: 12,
-        green: 13,
-        blue: 14,
-    };
-
     let result: usize = util::input()?
         .iter()
         .map_while(|g| Game::from_str(g).ok())
-        .filter(|g| g.is_possible(&contents))
-        .map(|g| g.id)
+        .map(|g| g.min_set())
+        .map(|r| r.power())
         .sum();
 
     info!("Result: {}", result);
@@ -113,7 +117,7 @@ mod tests {
             Reveal {
                 red: 4,
                 green: 0,
-                blue: 3
+                blue: 3,
             },
             Reveal::from_str("3 blue, 4 red")?
         );
@@ -122,7 +126,7 @@ mod tests {
             Reveal {
                 red: 1,
                 green: 2,
-                blue: 6
+                blue: 6,
             },
             Reveal::from_str("1 red, 2 green, 6 blue")?
         );
@@ -131,7 +135,7 @@ mod tests {
             Reveal {
                 red: 0,
                 green: 2,
-                blue: 0
+                blue: 0,
             },
             Reveal::from_str("2 green")?
         );
@@ -150,23 +154,59 @@ mod tests {
                     Reveal {
                         red: 4,
                         green: 0,
-                        blue: 3
+                        blue: 3,
                     },
                     Reveal {
                         red: 1,
                         green: 2,
-                        blue: 6
+                        blue: 6,
                     },
                     Reveal {
                         red: 0,
                         green: 2,
-                        blue: 0
-                    }
-                ]
+                        blue: 0,
+                    },
+                ],
             },
             Game::from_str("Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green")?
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_power() {
+        let game = Game {
+            id: 1,
+            reveals: vec![
+                Reveal {
+                    red: 4,
+                    green: 0,
+                    blue: 3,
+                },
+                Reveal {
+                    red: 1,
+                    green: 2,
+                    blue: 6,
+                },
+                Reveal {
+                    red: 0,
+                    green: 2,
+                    blue: 0,
+                },
+            ],
+        };
+
+        let min_set = game.min_set();
+        assert_eq!(
+            min_set,
+            Reveal {
+                red: 4,
+                green: 2,
+                blue: 6
+            }
+        );
+
+        assert_eq!(48, min_set.power());
     }
 }
