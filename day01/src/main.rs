@@ -34,7 +34,7 @@ fn string_to_digit_map() -> &'static HashMap<String, usize> {
 }
 
 #[derive(Debug)]
-struct CalibrationValue(u32);
+struct CalibrationValue(usize);
 
 impl FromStr for CalibrationValue {
     type Err = anyhow::Error;
@@ -69,16 +69,15 @@ impl FromStr for CalibrationValue {
             ));
         }
 
-        let mut val = String::new();
-        val.push_str(&left_most.unwrap().1.to_string());
-        val.push_str(&right_most.unwrap().1.to_string());
+        let mut val = left_most.unwrap().1 * 10;
+        val += right_most.unwrap().1;
 
-        Ok(CalibrationValue(u32::from_str(&val)?))
+        Ok(CalibrationValue(val))
     }
 }
 
 fn main() -> Result<()> {
-    let result: u32 = util::input()?
+    let result: usize = util::input()?
         .into_iter()
         .map_while(|s| CalibrationValue::from_str(&s).ok())
         .map(|c| c.0)
@@ -93,18 +92,24 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
 
+    impl PartialEq<CalibrationValue> for usize {
+        fn eq(&self, other: &CalibrationValue) -> bool {
+            *self == other.0
+        }
+    }
+
     #[test]
     fn test_from_str() -> Result<()> {
         util::init_test_logger()?;
 
-        assert_eq!(29, CalibrationValue::from_str("two1nine")?.0);
-        assert_eq!(83, CalibrationValue::from_str("eightwothree")?.0);
-        assert_eq!(13, CalibrationValue::from_str("abcone2threexyz")?.0);
-        assert_eq!(24, CalibrationValue::from_str("xtwone3four")?.0);
-        assert_eq!(42, CalibrationValue::from_str("4nineeightseven2")?.0);
-        assert_eq!(14, CalibrationValue::from_str("zoneight234")?.0);
-        assert_eq!(76, CalibrationValue::from_str("7pqrstsixteen")?.0);
-        assert_eq!(62, CalibrationValue::from_str("6twofive3two")?.0);
+        assert_eq!(29, CalibrationValue::from_str("two1nine")?);
+        assert_eq!(83, CalibrationValue::from_str("eightwothree")?);
+        assert_eq!(13, CalibrationValue::from_str("abcone2threexyz")?);
+        assert_eq!(24, CalibrationValue::from_str("xtwone3four")?);
+        assert_eq!(42, CalibrationValue::from_str("4nineeightseven2")?);
+        assert_eq!(14, CalibrationValue::from_str("zoneight234")?);
+        assert_eq!(76, CalibrationValue::from_str("7pqrstsixteen")?);
+        assert_eq!(62, CalibrationValue::from_str("6twofive3two")?);
 
         Ok(())
     }
