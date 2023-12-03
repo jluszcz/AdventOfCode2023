@@ -2,13 +2,13 @@ use anyhow::{anyhow, Result};
 use log::info;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct Position {
     x: usize,
     y: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct NumWithPosition {
     value: usize,
     position: Position,
@@ -22,7 +22,7 @@ struct EngineSchematic {
 }
 
 impl EngineSchematic {
-    fn part_numbers(&self) -> Vec<usize> {
+    fn part_numbers(&self) -> Vec<NumWithPosition> {
         let mut part_numbers = Vec::new();
 
         'num_loop: for num in self.numbers.iter() {
@@ -33,7 +33,7 @@ impl EngineSchematic {
                 {
                     let neighbor = self.grid[neighbor_y][neighbor_x];
                     if !neighbor.is_numeric() && neighbor != '.' {
-                        part_numbers.push(num.value);
+                        part_numbers.push(*num);
                         continue 'num_loop;
                     }
                 }
@@ -97,6 +97,7 @@ fn main() -> Result<()> {
     let result: usize = EngineSchematic::try_from(util::input()?)?
         .part_numbers()
         .into_iter()
+        .map(|n| n.value)
         .sum();
 
     info!("Result: {}", result);
@@ -141,21 +142,18 @@ mod tests {
     fn test_find_part_numbers() -> Result<()> {
         let schematic = EngineSchematic::try_from(util::test_input()?)?;
 
-        for expected_part_num in schematic
-            .numbers
-            .iter()
-            .map(|n| n.value)
-            .filter(|n| *n != 114 && *n != 58)
-        {
+        let part_nums: Vec<usize> = schematic.part_numbers().iter().map(|n| n.value).collect();
+
+        for expected_part_num in schematic.numbers.iter().map(|n| n.value) {
             if expected_part_num == 114 || expected_part_num == 58 {
                 assert!(
-                    !schematic.part_numbers().contains(&expected_part_num),
+                    !part_nums.contains(&expected_part_num),
                     "Found unexpected part num: {}",
                     expected_part_num
                 );
             } else {
                 assert!(
-                    schematic.part_numbers().contains(&expected_part_num),
+                    part_nums.contains(&expected_part_num),
                     "Did not find expected part num: {}",
                     expected_part_num
                 );
