@@ -1,18 +1,49 @@
 use anyhow::{anyhow, Result};
 use log::info;
+use std::collections::HashSet;
 use std::str::FromStr;
+use util::grid_neighbors;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 struct Position {
     x: usize,
     y: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug)]
+struct Gear {
+    part_numbers: HashSet<NumWithPosition>,
+}
+
+impl Gear {
+    fn ratio(&self) -> usize {
+        assert_eq!(2, self.part_numbers.len(), "Invalid gear: {:?}", self);
+        self.part_numbers
+            .iter()
+            .map(|n| n.value)
+            .reduce(|acc, n| acc * n)
+            .unwrap()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 struct NumWithPosition {
     value: usize,
     position: Position,
     length: usize,
+}
+
+impl NumWithPosition {
+    fn intersects(&self, pos: &Position) -> bool {
+        if pos.y == self.position.y {
+            for i in 0..self.length {
+                if pos.x == self.position.x + i {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug, Default)]
@@ -25,12 +56,10 @@ impl EngineSchematic {
     fn part_numbers(&self) -> Vec<NumWithPosition> {
         let mut part_numbers = Vec::new();
 
-        'num_loop: for num in self.numbers.iter() {
+        'num_loop: for num in &self.numbers {
             let pos = num.position;
             for i in 0..num.length {
-                for (neighbor_x, neighbor_y) in
-                    util::grid_neighbors(&self.grid, pos.x + i, pos.y, true)
-                {
+                for (neighbor_x, neighbor_y) in grid_neighbors(&self.grid, pos.x + i, pos.y, true) {
                     let neighbor = self.grid[neighbor_y][neighbor_x];
                     if !neighbor.is_numeric() && neighbor != '.' {
                         part_numbers.push(*num);
@@ -41,6 +70,38 @@ impl EngineSchematic {
         }
 
         part_numbers
+    }
+
+    fn gears(&self) -> Vec<Gear> {
+        let part_numbers = self.part_numbers();
+
+        let mut gears = Vec::new();
+
+        for (y, line) in self.grid.iter().enumerate() {
+            for (x, c) in line.iter().enumerate() {
+                if *c == '*' {
+                    let mut neighboring_part_nums = HashSet::new();
+                    for (neighbor_x, neighbor_y) in grid_neighbors(&self.grid, x, y, true) {
+                        for part_num in &part_numbers {
+                            if part_num.intersects(&Position {
+                                x: neighbor_x,
+                                y: neighbor_y,
+                            }) {
+                                neighboring_part_nums.insert(*part_num);
+                                break;
+                            }
+                        }
+                    }
+                    if neighboring_part_nums.len() == 2 {
+                        gears.push(Gear {
+                            part_numbers: neighboring_part_nums,
+                        })
+                    }
+                }
+            }
+        }
+
+        gears
     }
 
     fn add_num_with_position(
@@ -95,9 +156,9 @@ impl TryFrom<Vec<String>> for EngineSchematic {
 
 fn main() -> Result<()> {
     let result: usize = EngineSchematic::try_from(util::input()?)?
-        .part_numbers()
+        .gears()
         .into_iter()
-        .map(|n| n.value)
+        .map(|n| n.ratio())
         .sum();
 
     info!("Result: {}", result);
@@ -159,6 +220,19 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_gears() -> Result<()> {
+        let schematic = EngineSchematic::try_from(util::test_input()?)?;
+
+        let gear_ratios: Vec<usize> = schematic.gears().iter().map(|n| n.ratio()).collect();
+
+        assert_eq!(2, gear_ratios.len());
+        assert!(gear_ratios.contains(&16345));
+        assert!(gear_ratios.contains(&451490));
 
         Ok(())
     }
