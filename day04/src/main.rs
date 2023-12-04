@@ -1,23 +1,43 @@
 use anyhow::{anyhow, Result};
 use log::{info, trace};
+use std::cell::OnceCell;
 use std::str::FromStr;
 
 #[derive(Debug)]
 struct Card {
     winning_numbers: Vec<usize>,
     numbers: Vec<usize>,
+    winner_ct: OnceCell<usize>,
+    ct: usize,
 }
 
 impl Card {
-    fn value(&self) -> usize {
-        let winner_ct = self
-            .winning_numbers
-            .iter()
-            .filter_map(|n| self.numbers.binary_search(n).ok())
-            .count();
+    fn new(winning_numbers: Vec<usize>, numbers: Vec<usize>) -> Self {
+        Self {
+            winning_numbers,
+            numbers,
+            winner_ct: OnceCell::new(),
+            ct: 1,
+        }
+    }
 
-        if winner_ct > 0 {
-            1 << (winner_ct - 1)
+    fn winner_ct(&mut self) -> usize {
+        *self.winner_ct.get_or_init(|| {
+            self.winning_numbers
+                .iter()
+                .filter_map(|n| self.numbers.binary_search(n).ok())
+                .count()
+        })
+    }
+
+    fn winner(&mut self) -> bool {
+        self.winner_ct() > 0
+    }
+
+    #[cfg(test)]
+    fn value(&mut self) -> usize {
+        if self.winner() {
+            1 << (self.winner_ct() - 1)
         } else {
             0
         }
@@ -47,22 +67,38 @@ impl FromStr for Card {
             .collect::<Vec<_>>();
         numbers.sort();
 
-        let card = Card {
-            winning_numbers,
-            numbers,
-        };
+        let card = Card::new(winning_numbers, numbers);
         trace!("{} --> {:?}", input, card);
         Ok(card)
     }
 }
 
 fn main() -> Result<()> {
-    let result: usize = util::input()?
+    let mut cards = util::input()?
         .into_iter()
-        .map_while(|l| Card::from_str(&l).ok())
-        .map(|c| c.value())
-        .sum();
+        .map(|l| Card::from_str(&l).unwrap())
+        .collect::<Vec<_>>();
 
+    for i in 0..cards.len() {
+        if cards[i].winner() {
+            trace!(
+                "Card {} is a winner, copying the next {} cards",
+                i + 1,
+                cards[i].winner_ct()
+            );
+
+            let card_ct = cards[i].ct;
+
+            for j in (i + 1)..(i + cards[i].winner_ct() + 1) {
+                if let Some(c) = cards.get_mut(j) {
+                    trace!("Copying card {} {} times", j + 1, card_ct);
+                    c.ct += card_ct;
+                }
+            }
+        }
+    }
+
+    let result: usize = cards.into_iter().map(|c| c.ct).sum();
     info!("Result: {}", result);
 
     Ok(())
@@ -88,7 +124,7 @@ mod tests {
     fn test_value() -> Result<()> {
         util::init_test_logger()?;
 
-        let card = Card::from_str("Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53")?;
+        let mut card = Card::from_str("Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53")?;
 
         assert_eq!(8, card.value());
 
