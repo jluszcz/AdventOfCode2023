@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info, trace};
+use log::{info, trace};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -33,35 +33,80 @@ impl FromStr for Entry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct Range {
+    start: usize,
+    len: usize,
+}
+
+#[derive(Debug)]
+struct MappingRange {
     from: usize,
     to: usize,
     len: usize,
 }
 
-impl Range {
-    fn transform(&self, value: &usize) -> Option<usize> {
-        if (self.from..self.from + self.len).contains(value) {
-            trace!(
-                "{:?} [{}, {}) contains {}",
-                self,
-                self.from,
-                self.from + self.len,
-                value
-            );
-            Some(if self.from > self.to {
-                value - (self.from - self.to)
-            } else {
-                value + (self.to - self.from)
-            })
+impl MappingRange {
+    fn adjust(&self, value: usize) -> usize {
+        if self.from > self.to {
+            value - (self.from - self.to)
         } else {
-            None
+            value + (self.to - self.from)
         }
+    }
+
+    fn transform(&self, value: &Range) -> Option<Vec<Range>> {
+        let mut updated_ranges = Vec::new();
+
+        if value.start > self.from + self.len || value.start + value.len < self.from {
+            // The given value does not intersect with this mapping range, nothing is transformed
+            return None;
+        }
+
+        let value_end = value.start + value.len;
+        let mapping_end = self.from + self.len;
+
+        if value.start >= self.from && value_end <= mapping_end {
+            // The given value is fully contained within the mapping range, transform everything
+            updated_ranges.push(Range {
+                start: self.adjust(value.start),
+                len: value.len,
+            })
+        } else if value.start >= self.from {
+            // The start of the given value's range intersects with the mapping range
+            // value:            [    ]
+            // mapping_range: [    ]
+            //
+            let intersect_len = mapping_end - value.start;
+            updated_ranges.push(Range {
+                start: self.adjust(value.start + intersect_len),
+                len: intersect_len,
+            });
+            updated_ranges.push(Range {
+                start: value.start + intersect_len,
+                len: value.len - intersect_len,
+            });
+        } else {
+            // The end of the given value's range intersects with the mapping range
+            // value:         [    ]
+            // mapping_range:    [    ]
+            //
+            let intersect_len = self.from - value.start;
+            updated_ranges.push(Range {
+                start: value.start,
+                len: value.len - intersect_len,
+            });
+            updated_ranges.push(Range {
+                start: self.adjust(value.start + intersect_len),
+                len: intersect_len,
+            });
+        }
+
+        Some(updated_ranges)
     }
 }
 
-impl FromStr for Range {
+impl FromStr for MappingRange {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -78,7 +123,7 @@ impl FromStr for Range {
         let to = m[0];
         let len = m[2];
 
-        Ok(Range { from, to, len })
+        Ok(MappingRange { from, to, len })
     }
 }
 
@@ -86,24 +131,24 @@ impl FromStr for Range {
 struct Mapping {
     from: Entry,
     to: Entry,
-    entries: Vec<Range>,
+    entries: Vec<MappingRange>,
 }
 
 impl Mapping {
-    fn get(&self, key: &usize) -> usize {
+    fn get(&self, range: &Range) -> Option<Vec<Range>> {
         for m in &self.entries {
-            if let Some(v) = m.transform(key) {
-                trace!("Mapped {} to {}", key, v);
-                return v;
+            let result = m.transform(range);
+            if result.is_some() {
+                return result;
             }
         }
-        *key
+        None
     }
 }
 
 #[derive(Debug)]
 struct Almanac {
-    seeds: Vec<usize>,
+    seeds: Vec<Range>,
     mappings: HashMap<Entry, Mapping>,
 }
 
@@ -125,37 +170,45 @@ impl Almanac {
         Ok((t[0], t[1]))
     }
 
-    fn map(&self, value: usize, from: Entry) -> Result<(Entry, usize)> {
+    fn map(&self, range: &Range, from: Entry) -> Result<(Entry, Vec<Range>)> {
         let mapping = self
             .mappings
             .get(&from)
             .ok_or_else(|| anyhow!("Failed to find mapping for {:?}", from))?;
 
-        let next_val = mapping.get(&value);
-        trace!(
-            "Mapped {:?} {} to {:?} {}",
-            value,
-            next_val,
-            mapping.to,
-            next_val
-        );
+        let result = mapping.get(range).unwrap_or_else(|| vec![*range]);
+        trace!("Mapped {:?} to {:?} with {:?}", range, result, mapping);
 
-        Ok((mapping.to, next_val))
+        Ok((mapping.to, result))
     }
 
-    fn seed_to_location(&self, seed: usize) -> Result<usize> {
-        let mut source = Entry::Seed;
-        let mut value = seed;
+    fn seed_range_to_min_location(&self) -> Result<usize> {
+        let mut entry = Entry::Seed;
+        let mut ranges = self.seeds.clone();
 
-        let value = loop {
-            (source, value) = self.map(value, source)?;
+        loop {
+            let mut next_entry = entry;
+            let mut next_ranges = Vec::new();
 
-            if source == Entry::Location {
-                break value;
+            for range in ranges.iter() {
+                let mut updated_ranges;
+
+                (next_entry, updated_ranges) = self.map(range, entry)?;
+
+                next_ranges.append(&mut updated_ranges);
             }
-        };
-        debug!("Seed {} --> Location {}", seed, value);
-        Ok(value)
+
+            entry = next_entry;
+            ranges = next_ranges;
+
+            if entry == Entry::Location {
+                break;
+            }
+        }
+
+        ranges.sort_by(|x, y| x.start.cmp(&y.start));
+
+        Ok(ranges[0].start)
     }
 }
 
@@ -178,10 +231,17 @@ impl TryFrom<Vec<String>> for Almanac {
                     return Err(anyhow!("Invalid seed line {}", line));
                 }
 
-                seeds = seed_s
+                let seed_ranges = seed_s
                     .split_ascii_whitespace()
                     .filter_map(|s| usize::from_str(s).ok())
                     .collect::<Vec<_>>();
+
+                for n in (0..seed_ranges.len()).step_by(2) {
+                    seeds.push(Range {
+                        start: seed_ranges[n],
+                        len: seed_ranges[n + 1],
+                    });
+                }
 
                 continue;
             }
@@ -195,7 +255,7 @@ impl TryFrom<Vec<String>> for Almanac {
             }
 
             if let Some(mapping) = current_mapping.as_mut() {
-                mapping.entries.push(Range::from_str(&line)?);
+                mapping.entries.push(MappingRange::from_str(&line)?);
             }
 
             if current_mapping.is_none() {
@@ -222,12 +282,7 @@ impl TryFrom<Vec<String>> for Almanac {
 
 fn main() -> Result<()> {
     let almanac = Almanac::try_from(util::input()?)?;
-    let result = almanac
-        .seeds
-        .iter()
-        .filter_map(|s| almanac.seed_to_location(*s).ok())
-        .min()
-        .ok_or_else(|| anyhow!("Failed to find minimum location"))?;
+    let result = almanac.seed_range_to_min_location()?;
 
     info!("Result: {}", result);
 
@@ -239,18 +294,20 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_mappings_single_seed() -> Result<()> {
+        let mut almanac = Almanac::try_from(util::test_input()?)?;
+        almanac.seeds = vec![Range { start: 82, len: 1 }];
+
+        assert_eq!(46, almanac.seed_range_to_min_location()?);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_mappings() -> Result<()> {
         let almanac = Almanac::try_from(util::test_input()?)?;
 
-        assert_eq!((Entry::Soil, 81), almanac.map(79, Entry::Seed)?);
-        assert_eq!((Entry::Fertilizer, 81), almanac.map(81, Entry::Soil)?);
-        assert_eq!((Entry::Water, 81), almanac.map(81, Entry::Fertilizer)?);
-        assert_eq!((Entry::Light, 74), almanac.map(81, Entry::Water)?);
-        assert_eq!((Entry::Temperature, 78), almanac.map(74, Entry::Light)?);
-        assert_eq!((Entry::Humidity, 78), almanac.map(78, Entry::Temperature)?);
-        assert_eq!((Entry::Location, 82), almanac.map(78, Entry::Humidity)?);
-
-        assert_eq!(82, almanac.seed_to_location(79)?);
+        assert_eq!(46, almanac.seed_range_to_min_location()?);
 
         Ok(())
     }
