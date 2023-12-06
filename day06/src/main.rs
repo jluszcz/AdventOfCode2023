@@ -39,9 +39,7 @@ impl TryFrom<Vec<String>> for Races {
             }
 
             let (_, values) = line.split_once(':').unwrap();
-            for v in values.split_ascii_whitespace() {
-                target.push(usize::from_str(v)?);
-            }
+            target.push(usize::from_str(&values.replace(' ', ""))?);
         }
 
         if times.len() != distances.len() {
@@ -81,22 +79,15 @@ mod test {
     fn test_parsing() -> Result<()> {
         let races = Races::try_from(util::test_input()?)?;
 
-        assert_eq!(3, races.0.len());
+        assert_eq!(1, races.0.len());
 
-        assert!(races.0.contains(&Race {
-            time: 7,
-            distance: 9
-        }));
-
-        assert!(races.0.contains(&Race {
-            time: 15,
-            distance: 40
-        }));
-
-        assert!(races.0.contains(&Race {
-            time: 30,
-            distance: 200
-        }));
+        assert_eq!(
+            Race {
+                time: 71530,
+                distance: 940200
+            },
+            races.0[0]
+        );
 
         Ok(())
     }
