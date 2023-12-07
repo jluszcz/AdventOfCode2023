@@ -8,7 +8,6 @@ enum Card {
     Ace,
     King,
     Queen,
-    Jack,
     Ten,
     Nine,
     Eight,
@@ -18,6 +17,7 @@ enum Card {
     Four,
     Three,
     Two,
+    Joker,
 }
 
 impl Card {
@@ -26,7 +26,6 @@ impl Card {
             Card::Ace => 14,
             Card::King => 13,
             Card::Queen => 12,
-            Card::Jack => 11,
             Card::Ten => 10,
             Card::Nine => 9,
             Card::Eight => 8,
@@ -36,6 +35,7 @@ impl Card {
             Card::Four => 4,
             Card::Three => 3,
             Card::Two => 2,
+            Card::Joker => 1,
         }
     }
 
@@ -52,7 +52,7 @@ impl TryFrom<char> for Card {
             'A' => Card::Ace,
             'K' => Card::King,
             'Q' => Card::Queen,
-            'J' => Card::Jack,
+            'J' => Card::Joker,
             'T' => Card::Ten,
             '9' => Card::Nine,
             '8' => Card::Eight,
@@ -108,14 +108,22 @@ impl HandType {
     fn score(hand: &[Card; 5]) -> Self {
         let mut counter = vec![0; Card::len() + 1];
         for card in hand {
-            counter[card.rank() - Card::Two.rank()] += 1;
+            counter[*card as usize] += 1;
         }
 
         let (most_common_idx, most_common_ct) = counter
             .iter()
             .enumerate()
+            .filter(|(i, _)| *i != Card::Joker as usize)
             .max_by_key(|(_, ct)| *ct)
             .unwrap();
+
+        // Increaes the most common count by the count of wild jokers
+        let most_common_ct = if most_common_idx != Card::Joker as usize {
+            *most_common_ct + counter[Card::Joker as usize]
+        } else {
+            *most_common_ct
+        };
 
         match most_common_ct {
             5 => Self::FiveOfAKind,
@@ -124,7 +132,7 @@ impl HandType {
                 let (_, next_most_common_ct) = counter
                     .iter()
                     .enumerate()
-                    .filter(|(idx, _)| *idx != most_common_idx)
+                    .filter(|(i, _)| *i != most_common_idx && *i != Card::Joker as usize)
                     .max_by_key(|(_, ct)| *ct)
                     .unwrap();
 
@@ -280,13 +288,41 @@ mod test {
         let hand = Hand::from_str("KK677")?;
         assert_eq!(HandType::TwoPair, hand.hand_type);
 
-        let hand = Hand::from_str("QQQJA")?;
+        let hand = Hand::from_str("QQQKA")?;
         assert_eq!(HandType::ThreeOfAKind, hand.hand_type);
 
-        let hand = Hand::from_str("KJJJJ")?;
+        let hand = Hand::from_str("KQQQQ")?;
         assert_eq!(HandType::FourOfAKind, hand.hand_type);
 
+        let hand = Hand::from_str("QQQQQ")?;
+        assert_eq!(HandType::FiveOfAKind, hand.hand_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_hand_type_with_jokers_wild() -> Result<()> {
+        util::init_test_logger()?;
+
+        let hand = Hand::from_str("T55J5")?;
+        assert_eq!(HandType::FourOfAKind, hand.hand_type);
+
+        let hand = Hand::from_str("KTJJT")?;
+        assert_eq!(HandType::FourOfAKind, hand.hand_type);
+
+        let hand = Hand::from_str("QQQJA")?;
+        assert_eq!(HandType::FourOfAKind, hand.hand_type);
+
+        let hand = Hand::from_str("QQJKK")?;
+        assert_eq!(HandType::FullHouse, hand.hand_type);
+
+        let hand = Hand::from_str("QQJ23")?;
+        assert_eq!(HandType::ThreeOfAKind, hand.hand_type);
+
         let hand = Hand::from_str("JJJJJ")?;
+        assert_eq!(HandType::FiveOfAKind, hand.hand_type);
+
+        let hand = Hand::from_str("JJJJK")?;
         assert_eq!(HandType::FiveOfAKind, hand.hand_type);
 
         Ok(())
@@ -303,6 +339,10 @@ mod test {
         let hand_a = Hand::from_str("77888")?;
         let hand_b = Hand::from_str("77788")?;
         assert!(hand_a > hand_b);
+
+        let hand_a = Hand::from_str("T55J5")?;
+        let hand_b = Hand::from_str("KTJJT")?;
+        assert!(hand_b > hand_a);
 
         Ok(())
     }
