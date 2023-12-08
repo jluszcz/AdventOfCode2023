@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{info, trace};
+use log::{debug, info, trace};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -55,25 +55,49 @@ struct Map {
 }
 
 impl Map {
-    fn steps(&self, from: &str, to: &str) -> Result<usize> {
+    fn steps(&self, start: &str) -> Result<usize> {
         let mut steps = 0;
 
-        let mut curr = from;
+        let mut curr = start;
         for direction in self.directions.iter().cycle() {
             let next = self
                 .nodes
                 .get(curr)
-                .ok_or_else(|| anyhow!("No direction for {curr}"))?;
+                .ok_or_else(|| anyhow!("No next node for {curr}"))?
+                .next(direction);
 
             steps += 1;
 
-            curr = next.next(direction);
-            if curr == to {
+            trace!("{} + {:?} --> {}", curr, direction, next);
+            curr = next;
+            if curr.ends_with('Z') {
                 return Ok(steps);
             }
         }
 
         unreachable!()
+    }
+
+    fn ghost_steps(&self) -> Result<usize> {
+        let start_nodes = self
+            .nodes
+            .keys()
+            .filter(|n| n.ends_with('A'))
+            .collect::<Vec<_>>();
+
+        let mut steps = vec![0; start_nodes.len()];
+
+        debug!("Starting nodes: {:?}", start_nodes);
+
+        for i in 0..start_nodes.len() {
+            steps[i] = self.steps(start_nodes[i])?;
+            debug!("Found path for {} in {} steps", start_nodes[i], steps[i]);
+        }
+
+        steps
+            .into_iter()
+            .reduce(util::least_common_multiple)
+            .ok_or_else(|| anyhow!("Failed to find LCM"))
     }
 }
 
@@ -111,9 +135,9 @@ impl TryFrom<Vec<String>> for Map {
 }
 
 fn main() -> Result<()> {
-    let map = Map::try_from(util::input()?)?;
+    let map = Map::try_from(util::init()?)?;
 
-    let result = map.steps("AAA", "ZZZ")?;
+    let result = map.ghost_steps()?;
 
     info!("Result: {result}");
 
