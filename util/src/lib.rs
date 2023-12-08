@@ -1,12 +1,75 @@
 use anyhow::{anyhow, Result};
+use clap::{Arg, ArgAction, Command};
 use env_logger::Target;
 use log::{trace, LevelFilter};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::str::FromStr;
 
 const INPUT_PATH: &str = "input/input";
 const TEST_INPUT_PATH: &str = "input/example";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Input {
+    Test,
+    Actual,
+}
+
+impl FromStr for Input {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "test" => Ok(Self::Test),
+            "actual" => Ok(Self::Actual),
+            _ => Err(anyhow!("Invalid input type: {}", s)),
+        }
+    }
+}
+
+pub fn init() -> Result<Vec<String>> {
+    let matches = Command::new("advent-of-code")
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .action(ArgAction::SetTrue)
+                .help("increase log level from the default for the input type"),
+        )
+        .arg(
+            Arg::new("input")
+                .short('i')
+                .long("input")
+                .default_value("actual")
+                .help(format!(
+                    "input type, {:?} or {:?}",
+                    Input::Test,
+                    Input::Actual
+                )),
+        )
+        .get_matches();
+
+    let verbose = matches.get_flag("verbose");
+    let input = matches
+        .get_one::<String>("input")
+        .map(|s| Input::from_str(s))
+        .unwrap()?;
+
+    let log_level = match (input, verbose) {
+        (Input::Actual, false) => LevelFilter::Info,
+        (Input::Actual, true) => LevelFilter::Debug,
+        (Input::Test, false) => LevelFilter::Debug,
+        (Input::Test, true) => LevelFilter::Trace,
+    };
+
+    init_logger(log_level)?;
+
+    match input {
+        Input::Actual => self::input(),
+        Input::Test => self::test_input(),
+    }
+}
 
 fn init_logger(level: LevelFilter) -> Result<()> {
     inner_init_logger(Some(level), false)
@@ -27,12 +90,10 @@ fn inner_init_logger(level: Option<LevelFilter>, is_test: bool) -> Result<()> {
 }
 
 pub fn input() -> Result<Vec<String>> {
-    init_logger(LevelFilter::Info)?;
     read_lines(INPUT_PATH)
 }
 
 pub fn test_input() -> Result<Vec<String>> {
-    init_logger(LevelFilter::Trace)?;
     read_lines(TEST_INPUT_PATH)
 }
 
@@ -134,6 +195,20 @@ impl FromIterator<usize> for MinMax {
     }
 }
 
+pub fn greatest_common_divisor(a: usize, b: usize) -> usize {
+    if b > a {
+        greatest_common_divisor(b, a)
+    } else if b == 0 {
+        a
+    } else {
+        greatest_common_divisor(b, a % b)
+    }
+}
+
+pub fn least_common_multiple(a: usize, b: usize) -> usize {
+    (a * b) / greatest_common_divisor(a, b)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -217,5 +292,10 @@ mod test {
             vec![(8, 8), (9, 8), (8, 9)],
             grid_neighbors(&grid, 9, 9, true),
         );
+    }
+
+    #[test]
+    fn test_greatest_common_divisor() {
+        assert_eq!(6, greatest_common_divisor(48, 18));
     }
 }
