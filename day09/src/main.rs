@@ -6,7 +6,7 @@ use std::str::FromStr;
 struct OasisReadings(Vec<isize>);
 
 impl OasisReadings {
-    fn next_value(&self) -> isize {
+    fn prev_value(&self) -> isize {
         let mut history: Vec<Vec<isize>> = vec![self.0.clone()];
 
         let mut i = 0;
@@ -32,20 +32,20 @@ impl OasisReadings {
             }
         }
 
-        let mut next = None;
+        let mut prev = None;
         for i in (0..(history.len() - 1)).rev() {
             let next_history = &history[i];
 
-            next = Some(match next {
-                Some(next) => next + next_history[next_history.len() - 1],
+            prev = Some(match prev {
+                Some(prev) => next_history[0] - prev,
                 None => {
                     let prev_history = &history[i + 1];
-                    prev_history[prev_history.len() - 1] + next_history[next_history.len() - 1]
+                    next_history[0] - prev_history[0]
                 }
             })
         }
 
-        next.unwrap()
+        prev.unwrap()
     }
 }
 
@@ -67,7 +67,7 @@ fn main() -> Result<()> {
     let result = util::init()?
         .into_iter()
         .map_while(|l| OasisReadings::from_str(&l).ok())
-        .map(|r| r.next_value())
+        .map(|r| r.prev_value())
         .sum::<isize>();
 
     info!("Result: {result}");
@@ -80,17 +80,17 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_next_value() -> Result<()> {
+    fn test_prev_value() -> Result<()> {
         util::init_test_logger()?;
 
         let readings = OasisReadings::from_str("0 3 6 9 12 15")?;
-        assert_eq!(18, readings.next_value());
+        assert_eq!(-3, readings.prev_value());
 
         let readings = OasisReadings::from_str("1 3 6 10 15 21")?;
-        assert_eq!(28, readings.next_value());
+        assert_eq!(0, readings.prev_value());
 
         let readings = OasisReadings::from_str("10 13 16 21 30 45")?;
-        assert_eq!(68, readings.next_value());
+        assert_eq!(5, readings.prev_value());
 
         Ok(())
     }
