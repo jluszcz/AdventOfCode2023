@@ -59,8 +59,9 @@ impl EngineSchematic {
         'num_loop: for num in &self.numbers {
             let pos = num.position;
             for i in 0..num.length {
-                for (neighbor_x, neighbor_y) in grid_neighbors(&self.grid, pos.x + i, pos.y, true) {
-                    let neighbor = self.grid[neighbor_y][neighbor_x];
+                for neighbor in grid_neighbors(&self.grid, pos.x + i, pos.y, true) {
+                    let (x, y) = neighbor.into();
+                    let neighbor = self.grid[y][x];
                     if !neighbor.is_numeric() && neighbor != '.' {
                         part_numbers.push(*num);
                         continue 'num_loop;
@@ -81,12 +82,10 @@ impl EngineSchematic {
             for (x, c) in line.iter().enumerate() {
                 if *c == '*' {
                     let mut neighboring_part_nums = HashSet::new();
-                    for (neighbor_x, neighbor_y) in grid_neighbors(&self.grid, x, y, true) {
+                    for neighbor in grid_neighbors(&self.grid, x, y, true) {
+                        let (x, y) = neighbor.into();
                         for part_num in &part_numbers {
-                            if part_num.intersects(&Position {
-                                x: neighbor_x,
-                                y: neighbor_y,
-                            }) {
+                            if part_num.intersects(&Position { x, y }) {
                                 neighboring_part_nums.insert(*part_num);
                                 break;
                             }
